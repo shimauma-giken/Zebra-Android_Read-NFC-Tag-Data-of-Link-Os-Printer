@@ -1,19 +1,3 @@
-### Link-OS プリンタのNFCタグデータをZebra Android 端末にて抽出するJava コード（Android)
-
------
-
-下記の用途でZebra Android 端末を用いて、Zebra Link-OSプリンタのNFC/NDEFメッセージを抽出する必要がある際に参考になさってください。
-
-- Blueooth タッチペアリングのため、Bluetooth MACを抽出
-- Wi-Fi タッチペアリングのため、WiFi MACを抽出
-- 運用・保守のため、SKUやシリアルを抽出
-<br>
-
-応用すると、RFD40 やスキャナへも流用が可能です。  
-<br>
-
-
-```java
 package com.example.nfc_study_03;
 
 
@@ -225,5 +209,3 @@ public class MainActivity extends AppCompatActivity {
 
 
 }
-```
-
