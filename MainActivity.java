@@ -26,16 +26,19 @@ import android.widget.Toast;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 
 public class MainActivity extends AppCompatActivity {
 
     PendingIntent pendingIntent;
 
     String FLAG = "DEMO";
-    String printerBtMAC = null;
-    String printerWfMac = null;
-    String printerSerial = null;
-    String printerSku = null;
+
+    // Printer情報格納用
+    // {Wireless=000000000000, Bluetooth=5cf8218dc99b, Serial=50J163001771, Ether=00074d6c9e65, SKU=ZD41H23-D0PE00EZ}
+    Map<String, String> prtInfo = new HashMap<>();
+
 
     //インテント フィルタを宣言
     IntentFilter iFilterNDEF = new IntentFilter(NfcAdapter.ACTION_NDEF_DISCOVERED);
@@ -67,7 +70,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
 
-        // Foregrund Dispatch
+        // Foreground Dispatch
         pendingIntent = PendingIntent.getActivity(
                 this, 0, new Intent(this, getClass()).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
                 PendingIntent.FLAG_MUTABLE);
@@ -106,51 +109,73 @@ public class MainActivity extends AppCompatActivity {
         // テスト用： 各種タグ情報の取得
         getTAGinformation(intent);
 
-        /*
         // Payloadの読み取り(Page 4)
-        String payload1Page = readTagPage(tagFromIntent, 4);
+        String payload1Page;
+        payload1Page = readTagPage(tagFromIntent, 4);
+        payload1Page += readTagPage(tagFromIntent, 8);
+        payload1Page += readTagPage(tagFromIntent, 12);
         Log.v(FLAG, "Payload-1page: " + payload1Page);
 
-        // Payload の読み取り（NDEF MESG 範囲、4-39 Page for Mifare Ultralight)
-        int startpage = 4;
+        // Mifare UltralightのNDEF の読み取り
+        // MESG 範囲は 4-39 Page
+        int startPage = 4;
         int endPage = 39;
-        String payloadRange = readTagPageRange(tagFromIntent, startpage, endPage);
+        String payloadRange = readTagPageRange(tagFromIntent, startPage, endPage);
         Log.v(FLAG, "Payload-Range: " + payloadRange);
 
-         */
 
-        // Link-OS プリンタ情報の取得(ZQ620 でテスト)
-
-        printerBtMAC = getPrinterInfo(19, 3, 15);
-        Log.v(FLAG, "Printer BT-MAC: " + printerBtMAC);
-
-        printerWfMac = getPrinterInfo(15, 3, 15);
-        Log.v(FLAG, "Printer WF-MAC: " + printerWfMac);
-
-        printerSerial = getPrinterInfo(28, 0, 14);
-        Log.v(FLAG, "Printer Serial#: " + printerSerial);
-
-        printerSku = getPrinterInfo(23, 2, 14);
-        Log.v(FLAG, "Printer SKU: " + printerSku);
-
+        // Link-OS Printer 情報の収集
+        prtInfo = getPrinterInfo(payloadRange);
+        // テスト用
+        Log.v("DEM0", prtInfo.toString());
     }
+
 
     // Link-OS プリンタから特定ページデータの抽出
-    public String getPrinterInfo(int targetPage, int startPos, int endPos) {
-        String data = null;
-        String getPage = readTagPage(tagFromIntent, targetPage);
+    // Link-OS Printer NDEF Message 例、
+    //　p�lUzebra.com/apps/r/nfc?mE=000000000000&mW=ac3fa449af4c&mB=ac3fa449af4d&c=ZQ51-AUN010A-00&s=XXRAJ151700742&v=0�
+    //  p�lUzebra.com/apps/r/nfc?mE=00074d6c9e65&mW=000000000000&mBL=5cf8218dc99b&c=ZD41H23-D0PE00EZ&s=50J163001771&v=0�
+    //
+    //    データ構造
+    //    p�lUzebra.com/apps/r/nfc
+    //    1. ?mE=000000000000      Ethernet Mac
+    //    2. &mW=ac3fa449af4c      Wi-Fi Mac
+    //    3. &mB=ac3fa449af4d      Bluetooth Mac（Classic）
+    //    3. &mBL=5cf8218dc99b     Bluetooth Mac（LE）
+    //    4. &c=ZQ51-AUN010A-00    SKU
+    //    5. &s=XXRAJ151700742     Serial #
+    //    6. &v=0�                 Version
 
-        // テスト用
-        //Log.v(FLAG, "Page-Data: " + getPage);
+    public Map<String, String> getPrinterInfo(String payload) {
+        Map<String, String> prtInfo = new HashMap<>();
 
-        if (getPage.length() != 16) {
-            Log.v(FLAG, "Page-Length: Not 16 words. Please read the tag again.");
-            return data = null;
+        // Blutooth Classic/ Low Energy 対策用
+        int offset = 4;
+
+        // キーワードのポジション取得
+        int posEther = payload.indexOf("?mE=");
+        int posWireless = payload.indexOf("&mW=");
+        int posBluetooth;
+        if (payload.indexOf("&mB=") > 0){
+            posBluetooth = payload.indexOf("&mB=");
+        } else {
+            posBluetooth = payload.indexOf("&mBL=");
+            offset = 5;
         }
+        int posSKU = payload.indexOf("&c=");
+        int posSerial = payload.indexOf("&s=");
+        int posVer = payload.indexOf("&v=");
 
-        data = getPage.substring(startPos, endPos);
-        return data;
+        // PrtInfo Mapにデータ格納
+        prtInfo.put("Ether",payload.substring(posEther+4, posWireless));
+        prtInfo.put("Wireless",payload.substring(posWireless+4, posBluetooth));
+        prtInfo.put("Bluetooth",payload.substring(posBluetooth+offset, posSKU));
+        prtInfo.put("SKU",payload.substring(posSKU+3, posSerial));
+        prtInfo.put("Serial",payload.substring(posSerial+3, posVer));
+
+        return prtInfo;
     }
+
 
     // 特定ページの抽出
     public String readTagPage(Tag tag, int page) {
@@ -181,11 +206,17 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-    // 特定範囲のページを抽出
-    public String readTagPageRange(Tag tag, int startpage, int endPage) {
+    // 特定範囲のページを抽出 v2
+    public String readTagPageRange(Tag tag, int startPage, int endPage) {
         MifareUltralight mifare = MifareUltralight.get(tag);
         String payload = "";
-        for (int i = startpage; i <= endPage; i++) {
+        if (endPage%2 > 0 ){
+            endPage += 1;
+        }
+
+        // 4ページ毎にデータを抽出
+        for (int i = startPage; i <= endPage; i=i+4) {
+            // Log.v(FLAG, "Count: " + i);
             payload += readTagPage(tag, i);
         }
         return payload;
